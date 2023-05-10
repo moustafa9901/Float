@@ -2,69 +2,91 @@
 #include "wifi.h"
 #include "RTC.h"
 #include "motor.h"
-//variabls for blinking an LED with Millis
-const int led = 2; // ESP32 Pin to which onboard LED is connected
-unsigned long previousMillis = 0;  // will store last time LED was updated
-const long interval = 250;  // interval at which to blink (milliseconds)
-int ledState = LOW;  // ledState used to set the LED
-TaskHandle_t Task1;
-TaskHandle_t Task2;
+
+#define Blink_LED 2
+#define INTERVAL 10000
+
+hw_timer_t *Blink_Timer = NULL;
+
+void IRAM_ATTR Blink_Timer_ISR(){
+  digitalWrite(Blink_LED, !digitalRead(Blink_LED));
+}
+
+unsigned long long currentMillis=0;
+unsigned long long previousMillis=0;
+
+TaskHandle_t motor_task;
+//TaskHandle_t wifi_task;
+
 int datt;
 
+
+
 void setup() {
+  
+  pinMode(Blink_LED, OUTPUT);
+  Blink_Timer = timerBegin(1, 80, true);
+  Serial.begin(115200);
+  timerAttachInterrupt(Blink_Timer, &Blink_Timer_ISR, true);
+  timerAlarmWrite(Blink_Timer, 1000000, true);
+  timerAlarmEnable(Blink_Timer); 
+
+  motor_init();
+
   xTaskCreatePinnedToCore(
-                    Task1code,   /* Task function. */
-                    "Task1",     /* name of task. */
+                    motor_task_code,   /* Task function. */
+                    "motor_task",     /* name of task. */
                     10000,       /* Stack size of task */
                     NULL,        /* parameter of the task */
                     1,           /* priority of the task */
-                    &Task1,      /* Task handle to keep track of created task */
-                    0);          /* pin task to core 0 */                  
+                    &motor_task,      /* Task handle to keep track of created task */
+                    1);          /* pin task to core 0 */                  
   delay(500); 
+  
+  AquaWIFI_Init();
+  Server_init();
+  RTC_init();
 
-  //create a task that will be executed in the Task2code() function, with priority 1 and executed on core 1
-  xTaskCreatePinnedToCore(
-                    Task2code,   /* Task function. */
-                    "Task2",     /* name of task. */
-                    10000,       /* Stack size of task */
-                    NULL,        /* parameter of the task */
-                    1,           /* priority of the task */
-                    &Task2,      /* Task handle to keep track of created task */
-                    1);          /* pin task to core 1 */
-    delay(500); 
+//  create a task that will be executed in the Task2code() function, with priority 1 and executed on core 1
+//  xTaskCreatePinnedToCore(
+//                    wifi_task_code,   /* Task function. */
+//                    "wifi_task",     /* name of task. */
+//                    10000,       /* Stack size of task */
+//                    NULL,        /* parameter of the task */
+//                    1,           /* priority of the task */
+//                    &wifi_task,      /* Task handle to keep track of created task */
+//                    0);          /* pin task to core 1 */
+//  delay(500); 
 
-
-Serial.begin(115200);
-Serial.println("Booting");
-pinMode(led, OUTPUT);
-
-
+  Serial.begin(115200);
+  Serial.println("Booting");
+  
 }
 
-void Task1code( void * pvParameters ){
-  motor_init();
+void motor_task_code( void * pvParameters ){
+  
   for(;;){
-  motor_worker();
+    motor_worker();
   } 
 }
-
-//Task2code: blinks an LED every 700 ms
-void Task2code( void * pvParameters ){
-AquaWIFI_Init();
-AquaOTA_Init();
-Server_init();
-RTC_init();
-for(;;){
- AquaOTA_Check();  
- String dat= RTC_worker();
- 
- Recieve(dat);
- handleRoot();
- handle_client();
+//
+//void wifi_task_code( void * pvParameters ){
+void wifi_task_code(void){
+    if ((WiFi.status() != WL_CONNECTED) && (currentMillis - previousMillis >=INTERVAL)) {
+      Serial.print(millis());
+      Serial.println("Reconnecting to WiFi...");
+      WiFi.disconnect();
+      WiFi.reconnect();
+      previousMillis = currentMillis;
+    }
+     
+    // AquaOTA_Check();  
+    String dat= RTC_worker();
+    Recieve(dat);
+    handle_client();
+  
 }
-}
-
-
+//}
 void loop() {
-
-  }
+  wifi_task_code();
+}

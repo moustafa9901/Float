@@ -1,5 +1,5 @@
-#ifndef OTA
-#define OTA
+#ifndef OTA_H
+#define OTA_H
 
 #include <WiFi.h>
 #include <ESPmDNS.h>

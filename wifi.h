@@ -7,5 +7,6 @@ void handleAbout() ;
 void handle_client(void);
 void Server_init(void);
 void Recieve(String x);
+extern String signall;
 
 #endif
